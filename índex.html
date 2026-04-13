@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soft Runner Lab 🌸</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap');
+
+        :root {
+            --bg: #fff9fb; --card: #ffffff; --primary: #ffb7c5;
+            --secondary: #b2e2f2; --accent: #c1e1c1; --text: #5d5d5d;
+            --text-light: #a0a0a0; --shadow: 0 8px 20px rgba(255, 183, 197, 0.2);
+        }
+
+        body {
+            font-family: 'Quicksand', sans-serif; background-color: var(--bg);
+            color: var(--text); margin: 0; padding-bottom: 110px;
+        }
+
+        .container { max-width: 500px; margin: auto; padding: 20px; }
+
+        #toast {
+            visibility: hidden; min-width: 200px; background: var(--primary); color: white;
+            text-align: center; border-radius: 50px; padding: 15px;
+            position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%);
+            z-index: 1000; font-weight: 600; box-shadow: var(--shadow);
+        }
+        #toast.show { visibility: visible; animation: fadein 0.5s; }
+
+        .tabs {
+            display: flex; justify-content: space-around;
+            background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px);
+            position: fixed; bottom: 20px; width: 90%; max-width: 450px;
+            left: 50%; transform: translateX(-50%); padding: 12px 0;
+            border-radius: 30px; box-shadow: var(--shadow); z-index: 100;
+        }
+        .tab-btn { background: none; border: none; color: var(--text-light); font-weight: 700; cursor: pointer; font-size: 0.8rem; }
+        .tab-btn.active { color: var(--primary); transform: scale(1.1); }
+
+        .card { background: var(--card); padding: 20px; border-radius: 25px; margin-bottom: 20px; box-shadow: var(--shadow); }
+        h2 { color: var(--primary); text-align: center; margin-bottom: 15px; }
+        label { font-size: 0.8rem; font-weight: 700; color: var(--text-light); margin-left: 5px; }
+        
+        input, select {
+            width: 100%; background: #fdf2f4; border: 2px solid transparent;
+            padding: 12px; border-radius: 15px; color: var(--text);
+            box-sizing: border-box; font-family: 'Quicksand'; margin-bottom: 12px;
+        }
+
+        .btn-main {
+            background: var(--primary); color: white; border: none;
+            padding: 15px; width: 100%; border-radius: 20px;
+            font-weight: 700; cursor: pointer; font-size: 1rem;
+        }
+
+        .vo2-panel { text-align: center; border: 2px dashed var(--primary); border-radius: 20px; padding: 15px; margin-top: 10px; }
+        .vo2-big { font-size: 2.5rem; color: var(--primary); font-weight: 700; display: block; }
+        
+        .status-badge {
+            display: inline-block; padding: 8px 16px; border-radius: 15px;
+            margin-top: 10px; font-weight: 700; font-size: 0.8rem;
+        }
+        .status-ex { background: #d1fae5; color: #065f46; } 
+        .status-good { background: #dcfce7; color: #166534; } 
+        .status-norm { background: #fef9c3; color: #854d0e; } 
+        .status-poor { background: #fee2e2; color: #991b1b; } 
+
+        .history-item { border-bottom: 1px solid #fdf2f4; padding: 15px 0; display: flex; justify-content: space-between; align-items: center; }
+        .btn-sm { padding: 8px; border-radius: 12px; border: none; font-size: 0.9rem; cursor: pointer; margin-left: 5px; }
+        
+        .chart-label { font-size: 0.9rem; color: var(--text-light); font-weight: 700; margin-bottom: 10px; display: block; }
+
+        @keyframes fadein { from {opacity: 0; bottom: 80px;} to {opacity: 1; bottom: 110px;} }
+    </style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<div class="container">
+    <div id="new" class="content-section">
+        <h2 id="form-title">🌸 Nueva Carrera</h2>
+        <div class="card">
+            <label>Fecha</label>
+            <input type="date" id="date">
+            <label>Distancia (km)</label>
+            <input type="number" id="dist" step="0.01" placeholder="0.00">
+            <label>Tiempo (minutos)</label>
+            <input type="number" id="time" placeholder="0">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div><label>LPM Media</label><input type="number" id="hrAvg"></div>
+                <div><label>LPM Máx</label><input type="number" id="hrMax"></div>
+            </div>
+            <button class="btn-main" id="saveBtn" onclick="saveActivity()">Guardar Sesión ✨</button>
+            <button id="cancelBtn" class="btn-main" style="background:#eee; color:#999; margin-top:10px; display:none;" onclick="resetForm()">Cancelar</button>
+        </div>
+    </div>
+
+    <div id="chart" class="content-section" style="display:none;">
+        <h2>📈 Mi Progreso</h2>
+        <div class="card">
+            <span class="chart-label">Potencia Aeróbica (VO2 Máx)</span>
+            <canvas id="vo2Chart" style="max-height: 200px;"></canvas>
+            <div class="vo2-panel">
+                <small id="c-date">Selecciona un punto</small>
+                <span class="vo2-big" id="c-vo2">--</span>
+                <div id="c-status"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <span class="chart-label">Ritmo vs Volumen (Distancia)</span>
+            <canvas id="paceChart" style="max-height: 200px;"></canvas>
+            <small style="color:var(--text-light); display:block; margin-top:10px; text-align:center;">
+                *El tamaño del círculo indica la distancia recorrida.
+            </small>
+        </div>
+    </div>
+
+    <div id="stats" class="content-section" style="display:none;">
+        <h2>📊 Historial</h2>
+        <div class="card" id="historyList"></div>
+    </div>
+
+    <div id="profile" class="content-section" style="display:none;">
+        <h2>👤 Mi Perfil</h2>
+        <div class="card">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div><label>Edad</label><input type="number" id="p_age"></div>
+                <div><label>Peso (kg)</label><input type="number" id="p_weight"></div>
+            </div>
+            <label>Sexo</label>
+            <select id="p_gender">
+                <option value="male">Hombre</option>
+                <option value="female">Mujer</option>
+            </select>
+            <label>FC Reposo (LPM)</label><input type="number" id="p_rest">
+            <button class="btn-main" style="background:var(--accent); color:#4a7a4a" onclick="saveProfile()">Actualizar Perfil</button>
+        </div>
+    </div>
+</div>
+
+<nav class="tabs">
+    <button class="tab-btn active" onclick="showTab('new')">REGISTRO</button>
+    <button class="tab-btn" onclick="showTab('chart')">GRÁFICOS</button>
+    <button class="tab-btn" onclick="showTab('stats')">HISTORIAL</button>
+    <button class="tab-btn" onclick="showTab('profile')">PERFIL</button>
+</nav>
+
+<script>
+    let activities = JSON.parse(localStorage.getItem('runner_acts')) || [];
+    let profile = JSON.parse(localStorage.getItem('runner_prof')) || { weight: 70, rest: 60, age: 25, gender: 'male' };
+    let vo2Chart = null;
+    let paceChart = null;
+    let editIdx = -1;
+
+    document.getElementById('date').valueAsDate = new Date();
+
+    function notify(m) {
+        const t = document.getElementById("toast"); t.innerText = m;
+        t.className = "show"; setTimeout(() => t.className = "", 3000);
+    }
+
+    function showTab(id) {
+        document.querySelectorAll('.content-section').forEach(s => s.style.display = 'none');
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(id).style.display = 'block';
+        event.currentTarget.classList.add('active');
+        if(id === 'chart') updateCharts();
+        if(id === 'stats') updateHistory();
+    }
+
+    function saveActivity() {
+        const d = document.getElementById('date').value;
+        const dist = parseFloat(document.getElementById('dist').value);
+        const time = parseFloat(document.getElementById('time').value);
+        const hA = parseFloat(document.getElementById('hrAvg').value);
+        const hM = parseFloat(document.getElementById('hrMax').value);
+
+        if(!dist || !time || !hA || !profile.weight) return notify("¡Revisa datos! 🌸");
+
+        const vel = (dist * 1000) / time;
+        const vo2_cost = (vel * 0.2) + 3.5;
+        const fc_reserva_usada = (hA - profile.rest) / (hM - profile.rest);
+        const vo2Final = vo2_cost / (0.5 + 0.5 * fc_reserva_usada);
+
+        const paceDec = time / dist;
+        const paceMin = Math.floor(paceDec);
+        const paceSec = Math.round((paceDec % 1) * 60);
+
+        const act = { 
+            date: d, dist, time, hrMax: hM, hrAvg: hA, 
+            vo2: vo2Final.toFixed(2), 
+            paceRaw: paceDec.toFixed(2),
+            pace: `${paceMin}:${paceSec.toString().padStart(2, '0')}`
+        };
+
+        if(editIdx > -1) { activities[editIdx] = act; editIdx = -1; } 
+        else { activities.push(act); }
+
+        activities.sort((a,b) => new Date(a.date) - new Date(b.date));
+        localStorage.setItem('runner_acts', JSON.stringify(activities));
+        resetForm();
+        showTab('stats');
+    }
+
+    function updateCharts() {
+        if(activities.length === 0) return;
+        const labels = activities.map(a => a.date);
+
+        // --- Gráfico VO2 ---
+        const ctxVo2 = document.getElementById('vo2Chart').getContext('2d');
+        if(vo2Chart) vo2Chart.destroy();
+        vo2Chart = new Chart(ctxVo2, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    data: activities.map(a => a.vo2),
+                    borderColor: '#ffb7c5', tension: 0.4, pointRadius: 6, fill: true, backgroundColor: 'rgba(255,183,197,0.1)'
+                }]
+            },
+            options: { 
+                plugins: { legend: {display: false} },
+                onClick: (e, el) => { if(el.length) updateVO2Display(activities[el[0].index]); }
+            }
+        });
+
+        // --- Gráfico Ritmo y Distancia ---
+        const ctxPace = document.getElementById('paceChart').getContext('2d');
+        if(paceChart) paceChart.destroy();
+        paceChart = new Chart(ctxPace, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    data: activities.map(a => a.paceRaw),
+                    borderColor: '#b2e2f2', tension: 0.4, 
+                    pointRadius: activities.map(a => Math.min(a.dist * 2.5, 15)), // Tamaño por KM
+                    pointBackgroundColor: '#b2e2f2',
+                }]
+            },
+            options: {
+                plugins: { legend: {display: false} },
+                scales: {
+                    y: { 
+                        reverse: true, // Ritmo más bajo es más rápido
+                        ticks: { callback: v => v.toFixed(1) + " min" }
+                    }
+                }
+            }
+        });
+        updateVO2Display(activities[activities.length-1]);
+    }
+
+    function updateVO2Display(act) {
+        document.getElementById('c-vo2').innerText = act.vo2;
+        document.getElementById('c-date').innerText = act.date + " (" + act.dist + "km)";
+        
+        const isMale = profile.gender === 'male';
+        let v = parseFloat(act.vo2);
+        let status = { text: "Normal", class: "status-norm" };
+        if (isMale) {
+            if (v > 50) status = { text: "Excelente ✨", class: "status-ex" };
+            else if (v > 43) status = { text: "Buena 👍", class: "status-good" };
+            else if (v < 33) status = { text: "Pobre 💪", class: "status-poor" };
+        } else {
+            if (v > 43) status = { text: "Excelente ✨", class: "status-ex" };
+            else if (v > 36) status = { text: "Buena 👍", class: "status-good" };
+            else if (v < 29) status = { text: "Pobre 💪", class: "status-poor" };
+        }
+        document.getElementById('c-status').innerHTML = `<span class="status-badge ${status.class}">${status.text}</span>`;
+    }
+
+    function updateHistory() {
+        const container = document.getElementById('historyList');
+        container.innerHTML = activities.slice().reverse().map((a, i) => {
+            const realIdx = activities.length - 1 - i;
+            return `<div class="history-item">
+                <div><strong>${a.date}</strong><br><small>${a.dist}km - ${a.pace} min/km</small></div>
+                <div>
+                    <button class="btn-sm" style="background:var(--secondary)" onclick="editAct(${realIdx})">✏️</button>
+                    <button class="btn-sm" style="background:#ffcfcf" onclick="deleteAct(${realIdx})">🗑️</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function editAct(i) {
+        editIdx = i; const a = activities[i];
+        document.getElementById('date').value = a.date;
+        document.getElementById('dist').value = a.dist;
+        document.getElementById('time').value = a.time;
+        document.getElementById('hrAvg').value = a.hrAvg;
+        document.getElementById('hrMax').value = a.hrMax;
+        document.getElementById('form-title').innerText = "✏️ Editando";
+        document.getElementById('saveBtn').innerText = "Actualizar";
+        document.getElementById('cancelBtn').style.display = "block";
+        showTab('new');
+    }
+
+    function deleteAct(i) {
+        if(confirm("¿Borrar sesión?")) {
+            activities.splice(i, 1);
+            localStorage.setItem('runner_acts', JSON.stringify(activities));
+            updateHistory();
+        }
+    }
+
+    function resetForm() {
+        editIdx = -1; document.getElementById('form-title').innerText = "🌸 Nueva Carrera";
+        document.getElementById('saveBtn').innerText = "Guardar Sesión";
+        document.getElementById('cancelBtn').style.display = "none";
+        document.getElementById('dist').value = ""; document.getElementById('time').value = "";
+    }
+
+    function saveProfile() {
+        profile.rest = document.getElementById('p_rest').value;
+        profile.age = document.getElementById('p_age').value;
+        profile.weight = document.getElementById('p_weight').value;
+        profile.gender = document.getElementById('p_gender').value;
+        localStorage.setItem('runner_prof', JSON.stringify(profile));
+        notify("Perfil guardado");
+    }
+
+    window.onload = () => {
+        document.getElementById('p_rest').value = profile.rest;
+        document.getElementById('p_age').value = profile.age;
+        document.getElementById('p_weight').value = profile.weight;
+        document.getElementById('p_gender').value = profile.gender;
+    };
+</script>
+</body>
+</html>
+
